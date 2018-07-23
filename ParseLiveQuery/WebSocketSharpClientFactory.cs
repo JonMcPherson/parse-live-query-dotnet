@@ -10,6 +10,7 @@ namespace Parse.LiveQuery {
 
         private class WebSocketSharpClient : IWebSocketClient {
 
+            private readonly Logger _log = new Logger();
             private readonly object _mutex = new object();
 
             private readonly Uri _hostUri;
@@ -27,7 +28,7 @@ namespace Parse.LiveQuery {
 
 
             public void Open() {
-                SynchronizedWhen(WebSocketClientState.None, () => {
+                SynchronizeWhen(WebSocketClientState.None, () => {
                     _websocket = new WebSocket(_hostUri.ToString());
                     _websocket.OnOpen += OnOpen;
                     _websocket.OnClose += OnClose;
@@ -38,31 +39,34 @@ namespace Parse.LiveQuery {
             }
 
             public void Close() {
-                SynchronizedWhenNot(WebSocketClientState.None, () => {
+                SynchronizeWhenNot(WebSocketClientState.None, () => {
                     _state = WebSocketClientState.Disconnecting;
                     _websocket.Close(CloseStatusCode.Normal, "User invoked close");
                 });
             }
 
             public void Send(string message) {
-                SynchronizedWhen(WebSocketClientState.Connected, () => _websocket.Send(message));
+                SynchronizeWhen(WebSocketClientState.Connected, () => _websocket.Send(message));
             }
 
             // Event Handlers
 
             private void OnOpen(object sender, EventArgs e) {
-                Synchronized(() => _state = WebSocketClientState.Connected);
+                Synchronize(() => _state = WebSocketClientState.Connected);
                 _webSocketClientCallback.OnOpen();
             }
 
             private void OnClose(object sender, CloseEventArgs e) {
-                Synchronized(() => _state = WebSocketClientState.Disconnected);
+                Synchronize(() => _state = WebSocketClientState.Disconnected);
                 _webSocketClientCallback.OnClose();
             }
 
             private void OnMessage(object sender, MessageEventArgs e) {
                 if (e.IsText) _webSocketClientCallback.OnMessage(e.Data);
-                //else if (e.IsBinary) Log.w(LOG_TAG, "Socket got into inconsistent state and received %s instead.", bytes.toString()));
+                else if (e.IsBinary) {
+                    string hexData = BitConverter.ToString(e.RawData.SubArray(0, Math.Min(e.RawData.Length, 50))).Replace("-", "");
+                    _log.Warn($"Ignoring unexpected binary message > [{hexData}{(e.RawData.Length > 50 ? " ..." : "")}]");
+                }
             }
 
             private void OnError(object sender, ErrorEventArgs e) {
@@ -70,7 +74,7 @@ namespace Parse.LiveQuery {
             }
 
 
-            private void Synchronized(Action action, Func<bool> predicate = null) {
+            private void Synchronize(Action action, Func<bool> predicate = null) {
                 bool stateChanged;
                 lock (_mutex) {
                     WebSocketClientState state = _state;
@@ -81,9 +85,9 @@ namespace Parse.LiveQuery {
                 if (stateChanged) _webSocketClientCallback.OnStateChanged();
             }
 
-            private void SynchronizedWhen(WebSocketClientState state, Action action) => Synchronized(action, () => _state == state);
+            private void SynchronizeWhen(WebSocketClientState state, Action action) => Synchronize(action, () => _state == state);
 
-            private void SynchronizedWhenNot(WebSocketClientState state, Action action) => Synchronized(action, () => _state != state);
+            private void SynchronizeWhenNot(WebSocketClientState state, Action action) => Synchronize(action, () => _state != state);
 
         }
 

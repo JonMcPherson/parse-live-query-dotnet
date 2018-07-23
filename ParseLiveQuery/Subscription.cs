@@ -20,26 +20,51 @@ namespace Parse.LiveQuery {
 
         internal override object QueryObj => Query;
 
-
+        /// <summary>
+        /// Register a callback for when any event occurs.
+        /// </summary>
+        /// <param name="callback">The events callback to register.</param>
+        /// <returns>The same Subscription, for easy chaining.</returns>
         public Subscription<T> HandleEvents(IHandleEventsCallback<T> callback) {
             _handleEventsCallbacks.Add(callback);
             return this;
         }
 
+        /// <summary>
+        /// Register a callback for when a specific event occurs.
+        /// </summary>
+        /// <param name="subscriptionEvent">The event type to handle.</param>
+        /// <param name="callback">The event callback to register.</param>
+        /// <returns>The same Subscription, for easy chaining.</returns>
         public Subscription<T> HandleEvent(Event subscriptionEvent, IHandleEventCallback<T> callback) {
             return HandleEvents(new HandleEventCallbackAdapter(subscriptionEvent, callback));
         }
 
+        /// <summary>
+        /// Register a callback for when an error occurs.
+        /// </summary>
+        /// <param name="callback">The error callback to register.</param>
+        /// <returns>The same Subscription, for easy chaining.</returns>
         public Subscription<T> HandleError(IHandleErrorCallback<T> callback) {
             _handleErrorCallbacks.Add(callback);
             return this;
         }
 
+        /// <summary>
+        /// Register a callback for when a client succesfully subscribes to a query.
+        /// </summary>
+        /// <param name="callback">The subscribe callback to register.</param>
+        /// <returns>The same Subscription, for easy chaining.</returns>
         public Subscription<T> HandleSubscribe(IHandleSubscribeCallback<T> callback) {
             _handleSubscribeCallbacks.Add(callback);
             return this;
         }
 
+        /// <summary>
+        /// Register a callback for when a query has been unsubscribed.
+        /// </summary>
+        /// <param name="callback">The unsubscribe callback to register.</param>
+        /// <returns>The same Subscription, for easy chaining.</returns>
         public Subscription<T> HandleUnsubscribe(IHandleUnsubscribeCallback<T> callback) {
             _handleUnsubscribeCallbacks.Add(callback);
             return this;

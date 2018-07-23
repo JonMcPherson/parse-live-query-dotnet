@@ -55,7 +55,7 @@ namespace Parse.LiveQuery {
             if (IsConnected()) {
                 SendSubscription(subscription);
             } else if (_userInitiatedDisconnect) {
-                //Log.w(LOG_TAG, "Warning: The client was explicitly disconnected! You must explicitly call .reconnect() in order to process your subscriptions.");
+                throw new InvalidOperationException("The client was explicitly disconnected and must be reconnected before subscribing");
             } else {
                 ConnectIfNeeded();
             }
@@ -162,15 +162,13 @@ namespace Parse.LiveQuery {
                     case "connected":
                         _hasReceivedConnected = true;
                         DispatchConnected();
-                        //Log.v(LOG_TAG, "Connected, sending pending subscription");
                         foreach (Subscription subscription in _subscriptions.Values) {
                             SendSubscription(subscription);
                         }
                         break;
                     case "redirect":
-                        string url = (string) jsonObject["url"];
                         // TODO: Handle redirect.
-                        //Log.d(LOG_TAG, "Redirect is not yet handled");
+                        //string url = (string) jsonObject["url"];
                         break;
                     case "subscribed":
                         HandleSubscribedEvent(jsonObject);
@@ -216,7 +214,7 @@ namespace Parse.LiveQuery {
             }
         }
 
-        private void DispatchServerError(LiveQueryException exception) {
+        private void DispatchError(LiveQueryException exception) {
             foreach (IParseLiveQueryClientCallbacks callback in _callbacks) {
                 callback.OnLiveQueryError(this, exception);
             }
@@ -267,7 +265,7 @@ namespace Parse.LiveQuery {
             Subscription subscription = _subscriptions[requestId];
             LiveQueryException exception = new LiveQueryException.ServerReportedException(code, error, reconnect);
             subscription?.DidEncounter(subscription.QueryObj, exception);
-            DispatchServerError(exception);
+            DispatchError(exception);
         }
 
 
@@ -281,38 +279,37 @@ namespace Parse.LiveQuery {
 
             public void OnOpen() {
                 _client._hasReceivedConnected = false;
-                //Log.v(LOG_TAG, "Socket opened");
                 _client.SendOperationWithSessionAsync(session => new ConnectClientOperation(_client._applicationId, session)).ContinueWith(task => {
                     if (task.Exception != null) {
-                        //Log.e(LOG_TAG, "Error when connection client", error);
+                        _client.DispatchError(task.Exception.InnerException as LiveQueryException ??
+                            new LiveQueryException.UnknownException("Error connecting client", task.Exception));
                     }
                 });
             }
 
             public void OnMessage(string message) {
-                //Log.v(LOG_TAG, "Socket onMessage " + message);
                 _client.HandleOperationAsync(message).ContinueWith(task => {
                     if (task.Exception != null) {
-                        //Log.e(LOG_TAG, "Error handling message", error);
+                        _client.DispatchError(task.Exception.InnerException as LiveQueryException ??
+                            new LiveQueryException.UnknownException("Error handling message " + message, task.Exception));
                     }
                 });
             }
 
             public void OnClose() {
-                //Log.v(LOG_TAG, "Socket onClose");
                 _client._hasReceivedConnected = false;
                 _client.DispatchDisconnected();
             }
 
             public void OnError(Exception exception) {
-                //Log.e(LOG_TAG, "Socket onError", exception);
                 _client._hasReceivedConnected = false;
                 _client.DispatchSocketError(exception);
             }
 
             public void OnStateChanged() {
-                //Log.v(LOG_TAG, "Socket stateChanged");
+                // do nothing or maybe TODO logging
             }
+
         }
 
     }
