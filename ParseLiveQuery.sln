@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.27428.2037
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ParseLiveQuery", "ParseLiveQuery\ParseLiveQuery.csproj", "{D4B28D11-25E7-4430-ADFE-E2998DC63627}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{D4B28D11-25E7-4430-ADFE-E2998DC63627}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D4B28D11-25E7-4430-ADFE-E2998DC63627}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D4B28D11-25E7-4430-ADFE-E2998DC63627}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D4B28D11-25E7-4430-ADFE-E2998DC63627}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {8302C352-D27C-4D0F-B2CD-0C7F7D05A9A2}
+	EndGlobalSection
+EndGlobal
