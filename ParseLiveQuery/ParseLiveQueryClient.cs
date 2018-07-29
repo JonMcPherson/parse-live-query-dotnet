@@ -5,18 +5,20 @@ using System.Threading;
 using System.Threading.Tasks;
 using Parse.Common.Internal;
 using Parse.Core.Internal;
+using static Parse.LiveQuery.LiveQueryException;
 
 namespace Parse.LiveQuery {
     public class ParseLiveQueryClient {
 
         private readonly Uri _hostUri;
         private readonly string _applicationId;
-        private readonly IWebSocketClientFactory _webSocketClientFactory;
+        private readonly WebSocketClientFactory _webSocketClientFactory;
         private readonly IWebSocketClientCallback _webSocketClientCallback;
+        private readonly ISubscriptionFactory _subscriptionFactory;
+        private readonly ITaskQueue _taskQueue;
 
         private readonly ConcurrentDictionary<int, Subscription> _subscriptions = new ConcurrentDictionary<int, Subscription>();
         private readonly List<IParseLiveQueryClientCallbacks> _callbacks = new List<IParseLiveQueryClientCallbacks>();
-        private readonly TaskQueue _taskQueue = new TaskQueue();
 
         private IWebSocketClient _webSocketClient;
         private int _requestIdCount = 1;
@@ -25,15 +27,21 @@ namespace Parse.LiveQuery {
 
         public ParseLiveQueryClient() : this(GetDefaultUri()) { }
 
-        public ParseLiveQueryClient(Uri hostUri) : this(hostUri, new WebSocketSharpClientFactory()) { }
+        public ParseLiveQueryClient(Uri hostUri) : this(hostUri, WebSocketSharpClient.Factory) { }
 
-        public ParseLiveQueryClient(IWebSocketClientFactory webSocketClientFactory) : this(GetDefaultUri(), webSocketClientFactory) { }
+        public ParseLiveQueryClient(WebSocketClientFactory webSocketClientFactory) : this(GetDefaultUri(), webSocketClientFactory) { }
 
-        public ParseLiveQueryClient(Uri hostUri, IWebSocketClientFactory webSocketClientFactory) {
+        public ParseLiveQueryClient(Uri hostUri, WebSocketClientFactory webSocketClientFactory) :
+            this(hostUri, webSocketClientFactory, new SubscriptionFactory(), new TaskQueueWrapper()) { }
+
+        internal ParseLiveQueryClient(Uri hostUri, WebSocketClientFactory webSocketClientFactory,
+            ISubscriptionFactory subscriptionFactory, ITaskQueue taskQueue) {
             _hostUri = hostUri;
             _applicationId = ParseClient.CurrentConfiguration.ApplicationId;
             _webSocketClientFactory = webSocketClientFactory;
             _webSocketClientCallback = new WebSocketClientCallback(this);
+            _subscriptionFactory = subscriptionFactory;
+            _taskQueue = taskQueue;
         }
 
         private static Uri GetDefaultUri() {
@@ -49,7 +57,8 @@ namespace Parse.LiveQuery {
 
         public Subscription<T> Subscribe<T>(ParseQuery<T> query) where T : ParseObject {
             int requestId = _requestIdCount++;
-            Subscription<T> subscription = new Subscription<T>(requestId, query);
+            Subscription<T> subscription = _subscriptionFactory.CreateSubscription(requestId, query);
+
             _subscriptions.TryAdd(requestId, subscription);
 
             if (IsConnected()) {
@@ -95,7 +104,7 @@ namespace Parse.LiveQuery {
 
             _userInitiatedDisconnect = false;
             _hasReceivedConnected = false;
-            _webSocketClient = _webSocketClientFactory.CreateInstance(_hostUri, _webSocketClientCallback);
+            _webSocketClient = _webSocketClientFactory(_hostUri, _webSocketClientCallback);
             _webSocketClient.Open();
         }
 
@@ -128,12 +137,10 @@ namespace Parse.LiveQuery {
 
 
         private void SendSubscription(Subscription subscription) {
-            SendOperationWithSessionAsync(subscription.CreateSubscribeClientOperation).ContinueWith(task => {
-                if (task.Exception != null) {
-                    subscription.DidEncounter(subscription.QueryObj,
-                        new LiveQueryException.UnknownException("Error when subscribing", task.Exception));
-                }
-            });
+            _taskQueue.EnqueueOnError(
+                SendOperationWithSessionAsync(subscription.CreateSubscribeClientOperation),
+                error => subscription.DidEncounter(subscription.QueryObj, new UnknownException("Error when subscribing", error))
+            );
         }
 
         private void SendUnsubscription<T>(Subscription<T> subscription) where T : ParseObject {
@@ -141,15 +148,18 @@ namespace Parse.LiveQuery {
         }
 
         private Task SendOperationWithSessionAsync(Func<string, IClientOperation> operationFunc) {
-            return ParseSession.GetCurrentSessionAsync().OnSuccess(task => SendOperationAsync(operationFunc(task.Result.SessionToken)));
+            return _taskQueue.EnqueueOnSuccess(
+                ParseCorePlugins.Instance.CurrentUserController.GetCurrentSessionTokenAsync(CancellationToken.None),
+                currentSessionToken => SendOperationAsync(operationFunc(currentSessionToken.Result))
+            );
         }
 
         private Task SendOperationAsync(IClientOperation operation) {
-            return _taskQueue.Enqueue(task => task.ContinueWith(_ => _webSocketClient.Send(operation.ToJson())), CancellationToken.None);
+            return _taskQueue.Enqueue(() => _webSocketClient.Send(operation.ToJson()));
         }
 
         private Task HandleOperationAsync(string message) {
-            return _taskQueue.Enqueue(task => task.ContinueWith(_ => ParseMessage(message)), CancellationToken.None);
+            return _taskQueue.Enqueue(() => ParseMessage(message));
         }
 
 
@@ -195,10 +205,10 @@ namespace Parse.LiveQuery {
                         HandleErrorEvent(jsonObject);
                         break;
                     default:
-                        throw new LiveQueryException.InvalidResponseException(message);
+                        throw new InvalidResponseException(message);
                 }
-            } catch (Exception) {
-                throw new LiveQueryException.InvalidResponseException(message);
+            } catch (Exception e) when (!(e is LiveQueryException)) {
+                throw new InvalidResponseException(message, e);
             }
         }
 
@@ -232,14 +242,15 @@ namespace Parse.LiveQuery {
 
 
         private void HandleSubscribedEvent(IDictionary<string, object> jsonObject) {
-            int requestId = (int) jsonObject["requestId"];
+            int requestId = Convert.ToInt32(jsonObject["requestId"]);
 
-            Subscription subscription = _subscriptions[requestId];
-            subscription?.DidSubscribe(subscription.QueryObj);
+            if (_subscriptions.TryGetValue(requestId, out Subscription subscription)) {
+                subscription.DidSubscribe(subscription.QueryObj);
+            }
         }
 
         private void HandleUnsubscribedEvent(IDictionary<string, object> jsonObject) {
-            int requestId = (int) jsonObject["requestId"];
+            int requestId = Convert.ToInt32(jsonObject["requestId"]);
 
             if (_subscriptions.TryRemove(requestId, out Subscription subscription)) {
                 subscription.DidUnsubscribe(subscription.QueryObj);
@@ -247,24 +258,25 @@ namespace Parse.LiveQuery {
         }
 
         private void HandleObjectEvent(Subscription.Event subscriptionEvent, IDictionary<string, object> jsonObject) {
-            int requestId = (int) jsonObject["requestId"];
+            int requestId = Convert.ToInt32(jsonObject["requestId"]);
+            IDictionary<string, object> objectData = (IDictionary<string, object>) jsonObject["object"];
 
-            Subscription subscription = _subscriptions[requestId];
-            if (subscription != null) {
-                IObjectState objState = ParseObjectCoder.Instance.Decode(jsonObject, ParseDecoder.Instance);
+            if (_subscriptions.TryGetValue(requestId, out Subscription subscription)) {
+                IObjectState objState = ParseObjectCoder.Instance.Decode(objectData, ParseDecoder.Instance);
                 subscription.DidReceive(subscription.QueryObj, subscriptionEvent, objState);
             }
         }
 
         private void HandleErrorEvent(IDictionary<string, object> jsonObject) {
-            int requestId = (int) jsonObject["requestId"];
-            int code = (int) jsonObject["code"];
+            int requestId = Convert.ToInt32(jsonObject["requestId"]);
+            int code = Convert.ToInt32(jsonObject["code"]);
             string error = (string) jsonObject["error"];
             bool reconnect = (bool) jsonObject["reconnect"];
 
-            Subscription subscription = _subscriptions[requestId];
-            LiveQueryException exception = new LiveQueryException.ServerReportedException(code, error, reconnect);
-            subscription?.DidEncounter(subscription.QueryObj, exception);
+            LiveQueryException exception = new ServerReportedException(code, error, reconnect);
+            if (_subscriptions.TryGetValue(requestId, out Subscription subscription)) {
+                subscription.DidEncounter(subscription.QueryObj, exception);
+            }
             DispatchError(exception);
         }
 
@@ -279,21 +291,19 @@ namespace Parse.LiveQuery {
 
             public void OnOpen() {
                 _client._hasReceivedConnected = false;
-                _client.SendOperationWithSessionAsync(session => new ConnectClientOperation(_client._applicationId, session)).ContinueWith(task => {
-                    if (task.Exception != null) {
-                        _client.DispatchError(task.Exception.InnerException as LiveQueryException ??
-                            new LiveQueryException.UnknownException("Error connecting client", task.Exception));
-                    }
-                });
+                _client._taskQueue.EnqueueOnError(
+                    _client.SendOperationWithSessionAsync(session => new ConnectClientOperation(_client._applicationId, session)),
+                    error => _client.DispatchError(error.InnerException as LiveQueryException ??
+                        new UnknownException("Error connecting client", error))
+                );
             }
 
             public void OnMessage(string message) {
-                _client.HandleOperationAsync(message).ContinueWith(task => {
-                    if (task.Exception != null) {
-                        _client.DispatchError(task.Exception.InnerException as LiveQueryException ??
-                            new LiveQueryException.UnknownException("Error handling message " + message, task.Exception));
-                    }
-                });
+                _client._taskQueue.EnqueueOnError(
+                    _client.HandleOperationAsync(message),
+                    error => _client.DispatchError(error.InnerException as LiveQueryException ??
+                        new UnknownException("Error handling message " + message, error))
+                );
             }
 
             public void OnClose() {
@@ -308,6 +318,33 @@ namespace Parse.LiveQuery {
 
             public void OnStateChanged() {
                 // do nothing or maybe TODO logging
+            }
+
+        }
+
+
+        private class SubscriptionFactory : ISubscriptionFactory {
+
+            public Subscription<T> CreateSubscription<T>(int requestId, ParseQuery<T> query) where T : ParseObject =>
+                new Subscription<T>(requestId, query);
+        }
+
+        private class TaskQueueWrapper : ITaskQueue {
+
+            private readonly TaskQueue _underlying = new TaskQueue();
+
+            public Task Enqueue(Action taskStart) {
+                return _underlying.Enqueue(task => task.ContinueWith(t => taskStart()), CancellationToken.None);
+            }
+
+            public Task EnqueueOnSuccess<TIn>(Task<TIn> task, Func<Task<TIn>, Task> onSuccess) {
+                return task.OnSuccess(onSuccess).Unwrap();
+            }
+
+            public Task EnqueueOnError(Task task, Action<Exception> onError) {
+                return task.ContinueWith(t => {
+                    if (t.Exception != null) onError(t.Exception);
+                }, TaskContinuationOptions.ExecuteSynchronously); // Error handling doesn't need to be async
             }
 
         }

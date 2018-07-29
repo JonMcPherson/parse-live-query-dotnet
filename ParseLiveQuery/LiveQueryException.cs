@@ -21,6 +21,7 @@ namespace Parse.LiveQuery {
         /// An error that is reported when the server returns a response that cannot be parsed.
         /// </summary>
         public class InvalidResponseException : LiveQueryException {
+            internal InvalidResponseException(string response, Exception cause) : base(response, cause) { }
             internal InvalidResponseException(string response) : base(response) { }
         }
 

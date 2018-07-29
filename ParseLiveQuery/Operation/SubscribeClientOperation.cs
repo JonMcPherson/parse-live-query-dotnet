@@ -24,7 +24,7 @@ namespace Parse.LiveQuery {
                 ["sessionToken"] = _sessionToken,
                 ["query"] = new Dictionary<string, object> {
                     ["className"] = _query.GetClassName(),
-                    ["where"] = _query.BuildParameters()["where"]
+                    ["where"] = _query.BuildParameters().TryGetValue("where", out object where) ? where : null
                 }
             });
         }

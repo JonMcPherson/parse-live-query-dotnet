@@ -33,11 +33,11 @@ namespace Parse.LiveQuery {
         /// <summary>
         /// Register a callback for when a specific event occurs.
         /// </summary>
-        /// <param name="subscriptionEvent">The event type to handle.</param>
+        /// <param name="objEvent">The event type to handle.</param>
         /// <param name="callback">The event callback to register.</param>
         /// <returns>The same Subscription, for easy chaining.</returns>
-        public Subscription<T> HandleEvent(Event subscriptionEvent, IHandleEventCallback<T> callback) {
-            return HandleEvents(new HandleEventCallbackAdapter(subscriptionEvent, callback));
+        public Subscription<T> HandleEvent(Event objEvent, IHandleEventCallback<T> callback) {
+            return HandleEvents(new HandleEventCallbackAdapter(objEvent, callback));
         }
 
         /// <summary>
@@ -71,12 +71,12 @@ namespace Parse.LiveQuery {
         }
 
 
-        internal override void DidReceive(object queryObj, Event subscriptionEvent, IObjectState objState) {
+        internal override void DidReceive(object queryObj, Event objEvent, IObjectState objState) {
             ParseQuery<T> query = (ParseQuery<T>) queryObj;
             T obj = ParseObjectExtensions.FromState<T>(objState, query.GetClassName());
 
             foreach (IHandleEventsCallback<T> handleEventsCallback in _handleEventsCallbacks) {
-                handleEventsCallback.OnEvents(query, subscriptionEvent, obj);
+                handleEventsCallback.OnEvents(query, objEvent, obj);
             }
         }
 
@@ -105,16 +105,16 @@ namespace Parse.LiveQuery {
 
         private class HandleEventCallbackAdapter : IHandleEventsCallback<T> {
 
-            private readonly Event _subscriptionEvent;
+            private readonly Event _objEvent;
             private readonly IHandleEventCallback<T> _callback;
 
-            internal HandleEventCallbackAdapter(Event subscriptionEvent, IHandleEventCallback<T> callback) {
-                _subscriptionEvent = subscriptionEvent;
+            internal HandleEventCallbackAdapter(Event objEvent, IHandleEventCallback<T> callback) {
+                _objEvent = objEvent;
                 _callback = callback;
             }
 
             public void OnEvents(ParseQuery<T> query, Event callbackEvent, T obj) {
-                if (callbackEvent == _subscriptionEvent) {
+                if (callbackEvent == _objEvent) {
                     _callback.OnEvent(query, obj);
                 }
             }
@@ -126,7 +126,7 @@ namespace Parse.LiveQuery {
 
         internal abstract object QueryObj { get; }
 
-        internal abstract void DidReceive(object queryObj, Event subscriptionEvent, IObjectState obj);
+        internal abstract void DidReceive(object queryObj, Event objEvent, IObjectState obj);
 
         internal abstract void DidEncounter(object queryObj, LiveQueryException error);
 
@@ -138,7 +138,7 @@ namespace Parse.LiveQuery {
 
 
         public interface IHandleEventsCallback<T> where T : ParseObject {
-            void OnEvents(ParseQuery<T> query, Event subscriptionEvent, T obj);
+            void OnEvents(ParseQuery<T> query, Event objEvent, T obj);
         }
 
         public interface IHandleEventCallback<T> where T : ParseObject {
