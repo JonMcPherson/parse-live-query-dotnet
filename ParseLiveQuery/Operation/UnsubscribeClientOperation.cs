@@ -10,11 +10,9 @@ namespace Parse.LiveQuery {
             _requestId = requestId;
         }
 
-        public string ToJson() {
-            return Json.Encode(new Dictionary<string, object> {
-                ["op"] = "unsubscribe",
-                ["requestId"] = _requestId
-            });
-        }
+        public string ToJson() => Json.Encode(new Dictionary<string, object> {
+            ["op"] = "unsubscribe",
+            ["requestId"] = _requestId
+        });
     }
 }

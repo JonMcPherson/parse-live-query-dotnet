@@ -2,22 +2,18 @@
 using Parse.Common.Internal;
 
 namespace Parse.LiveQuery {
-    public class ConnectClientOperation : IClientOperation {
+    public class ConnectClientOperation : SessionClientOperation {
 
         private readonly string _applicationId;
-        private readonly string _sessionToken;
 
-        internal ConnectClientOperation(string applicationId, string sessionToken) {
+        internal ConnectClientOperation(string applicationId, string sessionToken) : base(sessionToken) {
             _applicationId = applicationId;
-            _sessionToken = sessionToken;
         }
 
-        public string ToJson() {
-            return Json.Encode(new Dictionary<string, object> {
-                ["op"] = "connect",
-                ["applicationId"] = _applicationId,
-                ["sessionToken"] = _sessionToken
-            });
-        }
+        protected override IDictionary<string, object> ToJsonObject() => new Dictionary<string, object> {
+            ["op"] = "connect",
+            ["applicationId"] = _applicationId
+        };
+
     }
 }

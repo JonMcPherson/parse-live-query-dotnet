@@ -150,7 +150,7 @@ namespace Parse.LiveQuery {
         private Task SendOperationWithSessionAsync(Func<string, IClientOperation> operationFunc) {
             return _taskQueue.EnqueueOnSuccess(
                 ParseCorePlugins.Instance.CurrentUserController.GetCurrentSessionTokenAsync(CancellationToken.None),
-                currentSessionToken => SendOperationAsync(operationFunc(currentSessionToken.Result))
+                currentSessionTokenTask => SendOperationAsync(operationFunc(currentSessionTokenTask.Result))
             );
         }
 
@@ -244,7 +244,8 @@ namespace Parse.LiveQuery {
         private void HandleSubscribedEvent(IDictionary<string, object> jsonObject) {
             int requestId = Convert.ToInt32(jsonObject["requestId"]);
 
-            if (_subscriptions.TryGetValue(requestId, out Subscription subscription)) {
+            Subscription subscription;
+            if (_subscriptions.TryGetValue(requestId, out subscription)) {
                 subscription.DidSubscribe(subscription.QueryObj);
             }
         }
@@ -252,7 +253,8 @@ namespace Parse.LiveQuery {
         private void HandleUnsubscribedEvent(IDictionary<string, object> jsonObject) {
             int requestId = Convert.ToInt32(jsonObject["requestId"]);
 
-            if (_subscriptions.TryRemove(requestId, out Subscription subscription)) {
+            Subscription subscription;
+            if (_subscriptions.TryRemove(requestId, out subscription)) {
                 subscription.DidUnsubscribe(subscription.QueryObj);
             }
         }
@@ -261,20 +263,22 @@ namespace Parse.LiveQuery {
             int requestId = Convert.ToInt32(jsonObject["requestId"]);
             IDictionary<string, object> objectData = (IDictionary<string, object>) jsonObject["object"];
 
-            if (_subscriptions.TryGetValue(requestId, out Subscription subscription)) {
+            Subscription subscription;
+            if (_subscriptions.TryGetValue(requestId, out subscription)) {
                 IObjectState objState = ParseObjectCoder.Instance.Decode(objectData, ParseDecoder.Instance);
                 subscription.DidReceive(subscription.QueryObj, subscriptionEvent, objState);
             }
         }
 
         private void HandleErrorEvent(IDictionary<string, object> jsonObject) {
-            int requestId = Convert.ToInt32(jsonObject["requestId"]);
+            object requestId = jsonObject.GetOrDefault("requestId", null);
             int code = Convert.ToInt32(jsonObject["code"]);
             string error = (string) jsonObject["error"];
             bool reconnect = (bool) jsonObject["reconnect"];
-
             LiveQueryException exception = new ServerReportedException(code, error, reconnect);
-            if (_subscriptions.TryGetValue(requestId, out Subscription subscription)) {
+
+            Subscription subscription;
+            if (requestId != null && _subscriptions.TryGetValue(Convert.ToInt32(requestId), out subscription)) {
                 subscription.DidEncounter(subscription.QueryObj, exception);
             }
             DispatchError(exception);

@@ -3,31 +3,28 @@ using Parse.Common.Internal;
 using Parse.Core.Internal;
 
 namespace Parse.LiveQuery {
-    public class SubscribeClientOperation<T> : IClientOperation where T : ParseObject {
+    public class SubscribeClientOperation<T> : SessionClientOperation where T : ParseObject {
+
+        private static readonly Dictionary<string, object> EmptyJsonObject = new Dictionary<string, object>(0);
 
         private readonly int _requestId;
         private readonly ParseQuery<T> _query;
-        private readonly string _sessionToken;
 
-        internal SubscribeClientOperation(Subscription<T> subscription, string sessionToken) {
+        internal SubscribeClientOperation(Subscription<T> subscription, string sessionToken) : base(sessionToken) {
             _requestId = subscription.RequestId;
             _query = subscription.Query;
-            _sessionToken = sessionToken;
         }
 
         // TODO: add support for fields
         // https://github.com/ParsePlatform/parse-server/issues/3671
-        public string ToJson() {
-            return Json.Encode(new Dictionary<string, object> {
-                ["op"] = "subscribe",
-                ["requestId"] = _requestId,
-                ["sessionToken"] = _sessionToken,
-                ["query"] = new Dictionary<string, object> {
-                    ["className"] = _query.GetClassName(),
-                    ["where"] = _query.BuildParameters().TryGetValue("where", out object where) ? where : null
-                }
-            });
-        }
+        protected override IDictionary<string, object> ToJsonObject() => new Dictionary<string, object> {
+            ["op"] = "subscribe",
+            ["requestId"] = _requestId,
+            ["query"] = new Dictionary<string, object> {
+                ["className"] = _query.GetClassName(),
+                ["where"] = _query.BuildParameters().GetOrDefault("where", EmptyJsonObject)
+            }
+        };
 
     }
 }

@@ -35,6 +35,7 @@ namespace Parse.LiveQuery {
                 _websocket.OnMessage += OnMessage;
                 _websocket.OnError += OnError;
                 _state = WebSocketClientState.Connecting;
+                _websocket.ConnectAsync();
             });
         }
 
