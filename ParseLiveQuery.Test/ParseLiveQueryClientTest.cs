@@ -18,7 +18,7 @@ namespace Parse.LiveQuery.Test {
         private ParseLiveQueryClient _parseLiveQueryClient;
         private IWebSocketClient _webSocketClient;
         private IWebSocketClientCallback _webSocketClientCallback;
-        
+
 
         [SetUp]
         public void SetUp() {
@@ -80,12 +80,12 @@ namespace Parse.LiveQuery.Test {
 
             [Test]
             public void ShouldNotifySubscribedCallbacks() {
-                IHandleSubscribeCallback<ParseObject> subscribeCallback = Substitute.For<IHandleSubscribeCallback<ParseObject>>();
+                SubscribeCallback<ParseObject> subscribeCallback = Substitute.For<SubscribeCallback<ParseObject>>();
 
                 ParseQuery<ParseObject> query = new ParseQuery<ParseObject>("test");
                 Subscribe(query, subscribeCallback);
 
-                subscribeCallback.Received().OnSubscribe(query);
+                subscribeCallback.Received().Invoke(query);
             }
 
             [Test]
@@ -99,8 +99,8 @@ namespace Parse.LiveQuery.Test {
                 };
 
                 LiveQueryException exception = null;
-                IHandleErrorCallback<ParseObject> errorCallback = Substitute.For<IHandleErrorCallback<ParseObject>>();
-                errorCallback.OnError(query, Arg.Do<LiveQueryException>(e => exception = e));
+                ErrorCallback<ParseObject> errorCallback = Substitute.For<ErrorCallback<ParseObject>>();
+                errorCallback.Invoke(query, Arg.Do<LiveQueryException>(e => exception = e));
 
 
                 _parseLiveQueryClient.Subscribe(query).HandleError(errorCallback);
@@ -109,7 +109,7 @@ namespace Parse.LiveQuery.Test {
 
                 // This will never get a chance to call op=subscribe, because an exception was thrown
                 _webSocketClient.DidNotReceive().Send(Arg.Any<string>());
-                errorCallback.Received().OnError(query, exception);
+                errorCallback.Received().Invoke(query, exception);
                 Assert.AreEqual("Error when subscribing", exception.Message);
                 Assert.NotNull(exception.GetBaseException());
             }
@@ -118,15 +118,15 @@ namespace Parse.LiveQuery.Test {
             public void ShouldHandleServerErrorsAndNotifyCallbacks() {
                 LiveQueryException exception = null;
                 ParseQuery<ParseObject> query = new ParseQuery<ParseObject>("test");
-                IHandleErrorCallback<ParseObject> errorCallback = Substitute.For<IHandleErrorCallback<ParseObject>>();
-                errorCallback.OnError(query, Arg.Do<LiveQueryException>(e => exception = e));
+                ErrorCallback<ParseObject> errorCallback = Substitute.For<ErrorCallback<ParseObject>>();
+                errorCallback.Invoke(query, Arg.Do<LiveQueryException>(e => exception = e));
 
 
                 Subscription<ParseObject> subscription = Subscribe(query).HandleError(errorCallback);
                 _webSocketClientCallback.OnMessage(MockErrorMessage(subscription.RequestId));
 
 
-                errorCallback.Received().OnError(query, exception);
+                errorCallback.Received().Invoke(query, exception);
                 Assert.IsInstanceOf<ServerReportedException>(exception);
 
                 ServerReportedException serverException = (ServerReportedException) exception;
@@ -140,11 +140,11 @@ namespace Parse.LiveQuery.Test {
                 ParseObject.RegisterSubclass<MockClassA>();
                 ParseObject.RegisterSubclass<MockClassB>();
 
-                IHandleErrorCallback<MockClassA> errorCallback1 = Substitute.For<IHandleErrorCallback<MockClassA>>();
-                errorCallback1.When(x => x.OnError(Arg.Any<ParseQuery<MockClassA>>(), Arg.Any<LiveQueryException>()))
+                ErrorCallback<MockClassA> errorCallback1 = Substitute.For<ErrorCallback<MockClassA>>();
+                errorCallback1.When(x => x.Invoke(Arg.Any<ParseQuery<MockClassA>>(), Arg.Any<LiveQueryException>()))
                     .Throw(c => c.ArgAt<LiveQueryException>(1));
-                IHandleErrorCallback<MockClassB> errorCallback2 = Substitute.For<IHandleErrorCallback<MockClassB>>();
-                errorCallback2.When(x => x.OnError(Arg.Any<ParseQuery<MockClassB>>(), Arg.Any<LiveQueryException>()))
+                ErrorCallback<MockClassB> errorCallback2 = Substitute.For<ErrorCallback<MockClassB>>();
+                errorCallback2.When(x => x.Invoke(Arg.Any<ParseQuery<MockClassB>>(), Arg.Any<LiveQueryException>()))
                     .Throw(c => c.ArgAt<LiveQueryException>(1));
 
                 ValidateReceivedEqualObjects(Event.Create, errorCallback1);
@@ -156,24 +156,24 @@ namespace Parse.LiveQuery.Test {
             [Test]
             public void ShouldNotifySubscribedCallbacks() {
                 ParseQuery<ParseObject> parseQuery = new ParseQuery<ParseObject>("test");
-                IHandleUnsubscribeCallback<ParseObject> unsubscribeCallback = Substitute.For<IHandleUnsubscribeCallback<ParseObject>>();
+                UnsubscribeCallback<ParseObject> unsubscribeCallback = Substitute.For<UnsubscribeCallback<ParseObject>>();
 
                 Subscription<ParseObject> subscription = Subscribe(parseQuery).HandleUnsubscribe(unsubscribeCallback);
                 _parseLiveQueryClient.Unsubscribe(parseQuery);
 
                 _webSocketClient.Received().Send(Arg.Any<string>());
-                unsubscribeCallback.DidNotReceive().OnUnsubscribe(Arg.Any<ParseQuery<ParseObject>>());
+                unsubscribeCallback.DidNotReceive().Invoke(Arg.Any<ParseQuery<ParseObject>>());
 
                 _webSocketClientCallback.OnMessage(MockUnsubscribedMessage(subscription.RequestId));
 
-                unsubscribeCallback.Received().OnUnsubscribe(parseQuery);
+                unsubscribeCallback.Received().Invoke(parseQuery);
             }
 
             [Test]
             public void ShouldCloseSubscriptions() {
                 ParseQuery<ParseObject> query = new ParseQuery<ParseObject>("test");
-                IHandleEventCallback<ParseObject> eventCallback = Substitute.For<IHandleEventCallback<ParseObject>>();
-                IHandleUnsubscribeCallback<ParseObject> unsubscribeCallback = Substitute.For<IHandleUnsubscribeCallback<ParseObject>>();
+                EventCallback<ParseObject> eventCallback = Substitute.For<EventCallback<ParseObject>>();
+                UnsubscribeCallback<ParseObject> unsubscribeCallback = Substitute.For<UnsubscribeCallback<ParseObject>>();
 
                 Subscription<ParseObject> subscription = Subscribe(query)
                     .HandleEvent(Event.Create, eventCallback)
@@ -184,12 +184,12 @@ namespace Parse.LiveQuery.Test {
 
                 _webSocketClientCallback.OnMessage(MockUnsubscribedMessage(subscription.RequestId));
 
-                unsubscribeCallback.Received().OnUnsubscribe(query);
+                unsubscribeCallback.Received().Invoke(query);
 
                 ParseObject parseObject = new ParseObject("Test") { ObjectId = "testId" };
                 _webSocketClientCallback.OnMessage(MockObjectEventMessage(Event.Create, subscription.RequestId, parseObject));
 
-                eventCallback.DidNotReceive().OnEvent(query, Arg.Any<ParseObject>());
+                eventCallback.DidNotReceive().Invoke(query, Arg.Any<ParseObject>());
             }
         }
 
@@ -302,35 +302,35 @@ namespace Parse.LiveQuery.Test {
         }
 
 
-        private void ValidateReceivedEqualObjects(Event objEvent, IHandleErrorCallback<ParseObject> errorCallback = null) =>
+        private void ValidateReceivedEqualObjects(Event objEvent, ErrorCallback<ParseObject> errorCallback = null) =>
             ValidateReceivedEqualObjects(objEvent, () => new ParseObject("test"), errorCallback);
 
-        private void ValidateReceivedEqualObjects<T>(Event objEvent, IHandleErrorCallback<T> errorCallback = null) where T : ParseObject, new() =>
+        private void ValidateReceivedEqualObjects<T>(Event objEvent, ErrorCallback<T> errorCallback = null) where T : ParseObject, new() =>
             ValidateReceivedEqualObjects(objEvent, () => new T(), errorCallback);
 
-        private void ValidateReceivedEqualObjects<T>(Event objEvent, Func<T> objInitFunction,
-            IHandleErrorCallback<T> errorCallback = null) where T : ParseObject {
+        private void ValidateReceivedEqualObjects<T>(Event objEvent, Func<T> objInitFunction, ErrorCallback<T> errorCallback = null)
+            where T : ParseObject {
             T expectedObj = objInitFunction();
             expectedObj.ObjectId = "testId";
             ParseQuery<T> query = new ParseQuery<T>(expectedObj.ClassName);
 
             T actualObj = null;
-            IHandleEventCallback<T> eventCallback = Substitute.For<IHandleEventCallback<T>>();
-            IHandleEventsCallback<T> eventsCallback = Substitute.For<IHandleEventsCallback<T>>();
-            eventCallback.OnEvent(query, Arg.Do<T>(obj => actualObj = obj));
+            EventCallback<T> eventCallback = Substitute.For<EventCallback<T>>();
+            EventsCallback<T> eventsCallback = Substitute.For<EventsCallback<T>>();
+            eventCallback.Invoke(query, Arg.Do<T>(obj => actualObj = obj));
 
             Subscription<T> subscription = Subscribe(query).HandleEvent(objEvent, eventCallback).HandleEvents(eventsCallback);
             if (errorCallback != null) subscription.HandleError(errorCallback);
             _webSocketClientCallback.OnMessage(MockObjectEventMessage(objEvent, subscription.RequestId, expectedObj));
 
-            eventCallback.Received().OnEvent(query, actualObj);
-            eventsCallback.Received().OnEvents(query, objEvent, actualObj);
+            eventCallback.Received().Invoke(query, actualObj);
+            eventsCallback.Received().Invoke(query, objEvent, actualObj);
             Assert.AreEqual(expectedObj.ClassName, actualObj.ClassName);
             Assert.AreEqual(expectedObj.ObjectId, actualObj.ObjectId);
         }
 
 
-        private Subscription<T> Subscribe<T>(ParseQuery<T> parseQuery, IHandleSubscribeCallback<T> subscribeCallback = null) where T : ParseObject {
+        private Subscription<T> Subscribe<T>(ParseQuery<T> parseQuery, SubscribeCallback<T> subscribeCallback = null) where T : ParseObject {
             Subscription<T> subscription = _parseLiveQueryClient.Subscribe(parseQuery);
             if (subscribeCallback != null) subscription.HandleSubscribe(subscribeCallback);
             _webSocketClientCallback.OnMessage(MockSubscribedMessage(subscription.RequestId));
