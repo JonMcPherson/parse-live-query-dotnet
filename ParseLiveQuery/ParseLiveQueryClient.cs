@@ -37,7 +37,7 @@ namespace Parse.LiveQuery {
         internal ParseLiveQueryClient(Uri hostUri, WebSocketClientFactory webSocketClientFactory,
             ISubscriptionFactory subscriptionFactory, ITaskQueue taskQueue) {
             _hostUri = hostUri;
-            _applicationId = ParseClient.CurrentConfiguration.ApplicationId;
+            _applicationId = ParseClient.CurrentConfiguration.ApplicationID;
             _webSocketClientFactory = webSocketClientFactory;
             _webSocketClientCallback = new WebSocketClientCallback(this);
             _subscriptionFactory = subscriptionFactory;
@@ -45,7 +45,7 @@ namespace Parse.LiveQuery {
         }
 
         private static Uri GetDefaultUri() {
-            string server = ParseClient.CurrentConfiguration.Server;
+            string server = ParseClient.CurrentConfiguration.ServerURI;
             if (server == null) throw new InvalidOperationException("Missing default Server URI in CurrentConfiguration");
 
             Uri serverUri = new Uri(server);
@@ -83,19 +83,33 @@ namespace Parse.LiveQuery {
 
         public void Unsubscribe<T>(ParseQuery<T> query) where T : ParseObject {
             if (query == null) return;
-            foreach (Subscription sub in _subscriptions.Values) {
+            var requestIds = new List<int>();
+            foreach (int requestId in _subscriptions.Keys) {
+                var sub = _subscriptions[requestId];
                 if (query.Equals(sub.QueryObj)) {
                     SendUnsubscription((Subscription<T>) sub);
+                    requestIds.Add(requestId);
                 }
+            }
+            Subscription dummy = null;
+            foreach (int requestId in requestIds) {
+                _subscriptions.TryRemove(requestId, out dummy);
             }
         }
 
         public void Unsubscribe<T>(ParseQuery<T> query, Subscription<T> subscription) where T : ParseObject {
             if (query == null || subscription == null) return;
-            foreach (Subscription sub in _subscriptions.Values) {
+            var requestIds = new List<int>();
+            foreach (int requestId in _subscriptions.Keys) {
+                var sub = _subscriptions[requestId];
                 if (query.Equals(sub.QueryObj) && subscription.Equals(sub)) {
                     SendUnsubscription(subscription);
+                    requestIds.Add(requestId);
                 }
+            }
+            Subscription dummy = null;
+            foreach (int requestId in requestIds) {
+                _subscriptions.TryRemove(requestId, out dummy);
             }
         }
 
