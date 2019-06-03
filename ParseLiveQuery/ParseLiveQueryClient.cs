@@ -12,6 +12,7 @@ namespace Parse.LiveQuery {
 
         private readonly Uri _hostUri;
         private readonly string _applicationId;
+        private readonly string _clientKey;
         private readonly WebSocketClientFactory _webSocketClientFactory;
         private readonly IWebSocketClientCallback _webSocketClientCallback;
         private readonly ISubscriptionFactory _subscriptionFactory;
@@ -38,6 +39,7 @@ namespace Parse.LiveQuery {
             ISubscriptionFactory subscriptionFactory, ITaskQueue taskQueue) {
             _hostUri = hostUri;
             _applicationId = ParseClient.CurrentConfiguration.ApplicationID;
+            _clientKey = ParseClient.CurrentConfiguration.Key;
             _webSocketClientFactory = webSocketClientFactory;
             _webSocketClientCallback = new WebSocketClientCallback(this);
             _subscriptionFactory = subscriptionFactory;
@@ -310,7 +312,7 @@ namespace Parse.LiveQuery {
             public void OnOpen() {
                 _client._hasReceivedConnected = false;
                 _client._taskQueue.EnqueueOnError(
-                    _client.SendOperationWithSessionAsync(session => new ConnectClientOperation(_client._applicationId, session)),
+                    _client.SendOperationWithSessionAsync(session => new ConnectClientOperation(_client._applicationId, _client._clientKey, session)),
                     error => _client.DispatchError(error.InnerException as LiveQueryException ??
                         new UnknownException("Error connecting client", error))
                 );
