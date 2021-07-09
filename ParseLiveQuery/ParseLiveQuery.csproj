@@ -7,8 +7,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Parse" Version="2.0.0" />
-    <PackageReference Include="WebSocketSharp" Version="1.0.3-rc11" />
+    <Reference Include="websocket-sharp">
+      <HintPath>..\..\WebSocketSharp-netstandard.1.0.1\lib\netstandard2.0\websocket-sharp.dll</HintPath>
+    </Reference>
+    <Reference Include="Parse">
+      <HintPath>..\..\Parse-SDK-dotNET\Parse\bin\Debug\netstandard2.0\Parse.dll</HintPath>
+    </Reference>
   </ItemGroup>
-
 </Project>
